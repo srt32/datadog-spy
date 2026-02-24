@@ -15,6 +15,8 @@ You're reading code and see `statsd.increment("orders.created")`. What does that
 3. **"Open in Datadog"** link takes you directly to the Metrics Explorer for that metric
 4. **"View Full Graph"** link opens a rich side panel with a larger chart and time range controls
 
+<img width="619" height="271" alt="image" src="https://github.com/user-attachments/assets/7aa93805-da9c-43c3-ae17-7bae2ee5dc00" />
+
 ## Quick Start
 
 ### 1. Clone and build
