@@ -53,10 +53,91 @@ function updateStatus(status: 'connected' | 'connecting' | 'disconnected' | 'err
 }
 
 /**
- * Reads the cached OAuth access token from the Copilot CLI's MCP OAuth config.
- * Looks for a token file whose config matches the Datadog MCP server URL.
+ * Refreshes an expired OAuth token using the refresh token.
+ * Updates the tokens file on disk and returns the new access token.
  */
-function readCopilotOAuthToken(site: string): string {
+async function refreshOAuthToken(
+  authServerUrl: string,
+  clientId: string,
+  refreshToken: string,
+  tokensPath: string
+): Promise<string> {
+  // Discover the token endpoint from the OAuth well-known metadata
+  const metadataUrl = `${authServerUrl}/.well-known/oauth-authorization-server`;
+  const metadata = await fetchJson(metadataUrl);
+  const tokenUrl = metadata.token_endpoint || `${authServerUrl}/api/unstable/mcp-server/token`;
+
+  const body = new URLSearchParams({
+    grant_type: 'refresh_token',
+    client_id: clientId,
+    refresh_token: refreshToken,
+  }).toString();
+
+  return new Promise((resolve, reject) => {
+    const url = new URL(tokenUrl);
+    const http = url.protocol === 'https:' ? require('https') : require('http');
+    const req = http.request(
+      {
+        hostname: url.hostname,
+        path: url.pathname,
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+          'Content-Length': Buffer.byteLength(body),
+        },
+      },
+      (res: any) => {
+        let data = '';
+        res.on('data', (chunk: string) => (data += chunk));
+        res.on('end', () => {
+          if (res.statusCode !== 200) {
+            reject(new Error(`OAuth refresh failed (${res.statusCode}). Re-authenticate via Copilot CLI.`));
+            return;
+          }
+          try {
+            const response = JSON.parse(data);
+            const newTokens = {
+              accessToken: response.access_token,
+              refreshToken: response.refresh_token || refreshToken,
+              expiresAt: Math.floor(Date.now() / 1000) + (response.expires_in || 3600),
+              scope: response.scope || '',
+            };
+            fs.writeFileSync(tokensPath, JSON.stringify(newTokens, null, 2));
+            resolve(newTokens.accessToken);
+          } catch {
+            reject(new Error('Failed to parse OAuth refresh response.'));
+          }
+        });
+      }
+    );
+    req.on('error', () => reject(new Error('OAuth refresh request failed. Re-authenticate via Copilot CLI.')));
+    req.write(body);
+    req.end();
+  });
+}
+
+/**
+ * Fetches JSON from a URL.
+ */
+function fetchJson(url: string): Promise<any> {
+  return new Promise((resolve, reject) => {
+    const parsedUrl = new URL(url);
+    const http = parsedUrl.protocol === 'https:' ? require('https') : require('http');
+    http.get(url, (res: any) => {
+      let data = '';
+      res.on('data', (chunk: string) => (data += chunk));
+      res.on('end', () => {
+        try { resolve(JSON.parse(data)); } catch { reject(new Error('Invalid JSON')); }
+      });
+    }).on('error', reject);
+  });
+}
+
+/**
+ * Reads the cached OAuth access token from the Copilot CLI's MCP OAuth config.
+ * Automatically refreshes expired tokens using the refresh token.
+ */
+async function readCopilotOAuthToken(site: string): Promise<string> {
   const oauthDir = path.join(os.homedir(), '.copilot', 'mcp-oauth-config');
   if (!fs.existsSync(oauthDir)) {
     throw new Error('No Copilot MCP OAuth config found. Run Copilot CLI to authenticate with Datadog first.');
@@ -67,8 +148,8 @@ function readCopilotOAuthToken(site: string): string {
 
   for (const file of files) {
     try {
-      const config = JSON.parse(fs.readFileSync(path.join(oauthDir, file), 'utf-8'));
-      if (config.serverUrl && config.serverUrl.replace(/\?$/, '') === targetUrl.replace(/\?$/, '')) {
+      const oauthConfig = JSON.parse(fs.readFileSync(path.join(oauthDir, file), 'utf-8'));
+      if (oauthConfig.serverUrl && oauthConfig.serverUrl.replace(/\?$/, '') === targetUrl.replace(/\?$/, '')) {
         const tokensFile = file.replace('.json', '.tokens.json');
         const tokensPath = path.join(oauthDir, tokensFile);
         if (!fs.existsSync(tokensPath)) {
@@ -78,20 +159,28 @@ function readCopilotOAuthToken(site: string): string {
         if (!tokens.accessToken) {
           throw new Error('OAuth access token missing. Re-authenticate via Copilot CLI.');
         }
-        if (tokens.expiresAt && tokens.expiresAt * 1000 < Date.now()) {
-          throw new Error('OAuth token expired. Re-authenticate via Copilot CLI.');
+        // Auto-refresh if expired
+        if (tokens.expiresAt && tokens.expiresAt < Math.floor(Date.now() / 1000)) {
+          if (!tokens.refreshToken) {
+            throw new Error('OAuth token expired and no refresh token available. Re-authenticate via Copilot CLI.');
+          }
+          return await refreshOAuthToken(
+            oauthConfig.authorizationServerUrl,
+            oauthConfig.clientId,
+            tokens.refreshToken,
+            tokensPath
+          );
         }
         return tokens.accessToken;
       }
     } catch (err) {
       if (err instanceof Error && err.message.includes('OAuth')) { throw err; }
-      // Skip malformed config files
     }
   }
   throw new Error('No Datadog OAuth token found in Copilot config. Ensure Datadog MCP is configured in ~/.copilot/mcp-config.json and authenticated.');
 }
 
-function createTransport(config: ReturnType<typeof getConfig>): Transport {
+async function createTransport(config: ReturnType<typeof getConfig>): Promise<Transport> {
   switch (config.mcpServer) {
     case 'official': {
       // Official Datadog MCP server via Streamable HTTP
@@ -110,7 +199,7 @@ function createTransport(config: ReturnType<typeof getConfig>): Transport {
       // Official Datadog MCP server via Streamable HTTP with Copilot CLI OAuth tokens
       const endpoint = getMcpEndpoint(config.datadogSite);
       const url = new URL(endpoint);
-      const accessToken = readCopilotOAuthToken(config.datadogSite);
+      const accessToken = await readCopilotOAuthToken(config.datadogSite);
       return new StreamableHTTPClientTransport(url, {
         requestInit: {
           headers: {
@@ -184,7 +273,7 @@ export async function getClient(): Promise<Client> {
       );
     }
 
-    transport = createTransport(config);
+    transport = await createTransport(config);
 
     client = new Client({
       name: 'datadog-spy',
@@ -215,14 +304,36 @@ export async function queryMetrics(
   const mcpClient = await getClient();
   const toolName = getMetricToolName(config.mcpServer);
 
-  const result = await mcpClient.callTool({
-    name: toolName,
-    arguments: {
-      query: metricQuery,
-      from: fromEpoch,
-      to: toEpoch,
-    },
-  });
+  // The official Datadog MCP tool uses 'queries' (array) and relative time strings;
+  // the community tool uses 'query', 'from', 'to' (epoch).
+  const args = config.mcpServer === 'community'
+    ? { query: metricQuery, from: fromEpoch, to: toEpoch }
+    : { queries: [metricQuery], from: `${fromEpoch}`, to: `${toEpoch}` };
+
+  let result;
+  try {
+    result = await mcpClient.callTool({
+      name: toolName,
+      arguments: args,
+    });
+  } catch (err) {
+    // Reset connection on session errors and retry once
+    if (err instanceof Error && err.message.includes('session')) {
+      await disconnect();
+      const retryClient = await getClient();
+      result = await retryClient.callTool({ name: toolName, arguments: args });
+    } else {
+      throw err;
+    }
+  }
+
+  // Log raw response for debugging
+  try {
+    const res = result as { content?: Array<{ text: string }> };
+    const rawText = res.content?.[0]?.text || JSON.stringify(result);
+    console.log('[datadog-spy] Tool:', toolName, 'Args:', JSON.stringify(args));
+    console.log('[datadog-spy] Raw response (first 1000 chars):', rawText.substring(0, 1000));
+  } catch {}
 
   return parseMetricsResponse(result);
 }

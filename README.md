@@ -12,33 +12,12 @@ You're reading code and see `statsd.increment("orders.created")`. What does that
 
 1. **Inline sparkline** appears in the hover tooltip showing the last hour of data
 2. **Key stats** (latest, avg, min, max) displayed at a glance
-3. **"View Full Graph"** link opens a rich side panel with a larger chart and time range controls
+3. **"Open in Datadog"** link takes you directly to the Metrics Explorer for that metric
+4. **"View Full Graph"** link opens a rich side panel with a larger chart and time range controls
 
-## Features
+## Quick Start
 
-- **Inline sparkline graphs** — hover over any metrics call and see a 300×60px SVG sparkline rendered directly in the tooltip
-- **Rich graph panel** — click "View Full Graph" to open a Webview side panel with a larger interactive chart, key statistics, and time range selector (1h / 4h / 24h / 1w)
-- **Multi-language support** — detects metrics calls in Python, Go, Ruby, JavaScript, and TypeScript
-- **Powered by MCP** — uses the [Datadog MCP Server](https://github.com/winor30/mcp-server-datadog) via the [Model Context Protocol](https://modelcontextprotocol.io), so the Datadog API interaction is handled by a well-maintained community server
-- **Smart caching** — results cached for 60 seconds to avoid hammering the API on repeated hovers
-- **Configurable** — set your Datadog site, default time range, and an optional metric name prefix
-
-## Detected Patterns
-
-The extension uses regex-based detection to identify metrics calls. It recognizes the common StatsD/DogStatsD client patterns:
-
-| Language | Example Patterns |
-|----------|-----------------|
-| **Python** | `statsd.increment('orders.created')`, `dogstatsd.gauge(...)`, `statsd.histogram(...)`, `statsd.timing(...)`, `statsd.distribution(...)`, `statsd.set(...)`, `statsd.count(...)` |
-| **Go** | `statsd.Incr("orders.created", ...)`, `statsd.Gauge(...)`, `statsd.Count(...)`, `statsd.Histogram(...)`, `client.Distribution(...)`, `statsd.Timing(...)`, `statsd.Set(...)` |
-| **Ruby** | `StatsD.increment('orders.created')`, `StatsD.gauge(...)`, `StatsD.histogram(...)`, `StatsD.timing(...)`, `Datadog::Statsd.count(...)` |
-| **JS/TS** | `statsd.increment('orders.created')`, `dogstatsd.gauge(...)`, `metrics.histogram(...)`, `client.timing(...)`, `StatsD.count(...)` |
-
-The detector also handles `decrement`/`Decr` variants. Metric type is normalized (e.g., `increment` → `count`, `Incr` → `count`) and used to pick the right Datadog aggregation function (`sum` for counts, `avg` for gauges, etc.).
-
-## Setup
-
-### 1. Install the Extension
+### 1. Clone and build
 
 ```bash
 git clone https://github.com/srt32/datadog-spy.git
@@ -47,79 +26,114 @@ npm install
 npm run compile
 ```
 
-Open the project in VS Code and press **F5** to launch the Extension Development Host.
+### 2. Launch in VS Code
 
-### 2. Choose Your MCP Backend
-
-The extension supports three ways to connect to Datadog. Set `metricsPeek.mcpServer` in VS Code Settings:
-
-#### Option A: Official Datadog MCP Server — Remote (Recommended)
-
-Uses the [official Datadog MCP Server](https://docs.datadoghq.com/bits_ai/mcp_server/) via Streamable HTTP. This is a managed remote service with the richest feature set.
-
-```
-metricsPeek.mcpServer: "official"
+```bash
+open -a "Visual Studio Code" .    # macOS
+# or: code .                      # if you have the `code` CLI alias
 ```
 
-**Requirements:**
-- Datadog org must be [allowlisted for the Preview](https://www.datadoghq.com/product-preview/datadog-mcp-server/)
-- Set `metricsPeek.datadogApiKey` and `metricsPeek.datadogAppKey` in settings
-- Set `metricsPeek.datadogSite` to match your Datadog region (e.g., `datadoghq.com`, `datadoghq.eu`, `us5.datadoghq.com`)
+Then launch the Extension Development Host:
 
-The extension connects to the regional endpoint (e.g., `https://mcp.datadoghq.com/api/unstable/mcp-server/mcp`) and authenticates with your API keys via HTTP headers.
+- **macOS:** `Cmd+Shift+P` → type **"Debug: Start Debugging"** → Enter
+- **Windows/Linux:** Press `F5`
 
-#### Option B: Official Datadog MCP Server — Local Binary
+This opens a **second VS Code window** where the extension is active.
 
-Uses the official `datadog_mcp_cli` binary over stdio. Useful if you prefer OAuth login or your org requires it.
+### 3. Open your project in the Extension Development Host
 
-```
-metricsPeek.mcpServer: "official-local"
-```
+In the second window that opened: `Cmd+O` (macOS) or `Ctrl+O` → open your project folder.
 
-**Requirements:**
-1. Install the CLI:
-   ```bash
-   curl -sSL https://coterm.datadoghq.com/mcp-cli/install.sh | bash
+### 4. Set the metric prefix
+
+Most projects prepend a namespace to all metrics. For example, if your code has `statsClient.Increment("publish", ...)` but the metric in Datadog is `gateway_limiting_agent.publish`, you need to set the prefix:
+
+`Cmd+,` (macOS) or `Ctrl+,` → search **`metricsPeek.metricPrefix`** → set to your prefix (e.g., `gateway_limiting_agent.`)
+
+> **Important:** Include the trailing dot (`.`) in the prefix.
+
+### 5. Hover over a metrics call
+
+Open any file with StatsD/DogStatsD calls and hover over the metric name. You should see a sparkline, stats, and links.
+
+## Authentication
+
+The extension defaults to `official-oauth` mode, which **reuses your existing Copilot CLI OAuth tokens** — no API keys to configure.
+
+### Prerequisites for OAuth mode (default)
+
+1. You have GitHub Copilot CLI installed
+2. You have Datadog MCP configured in `~/.copilot/mcp-config.json`:
+   ```json
+   {
+     "mcpServers": {
+       "datadog": {
+         "type": "http",
+         "url": "https://mcp.datadoghq.com/api/unstable/mcp-server/mcp",
+         "headers": {},
+         "tools": ["*"]
+       }
+     }
+   }
    ```
-2. Log in once:
-   ```bash
-   datadog_mcp_cli login
-   ```
-3. No API keys needed in VS Code settings — auth is handled by the CLI.
+3. You've used a Datadog MCP tool at least once via Copilot CLI (this triggers the initial OAuth login and caches tokens at `~/.copilot/mcp-oauth-config/`)
 
-#### Option C: Community MCP Server
+The extension reads the cached tokens and **auto-refreshes** them when they expire.
 
-Uses the community-maintained [`@winor30/mcp-server-datadog`](https://github.com/winor30/mcp-server-datadog) via npx. No Preview access required.
+### Alternative auth modes
 
-```
-metricsPeek.mcpServer: "community"
-```
+| Mode | Setting | Auth | Best for |
+|------|---------|------|----------|
+| **Copilot OAuth** (default) | `official-oauth` | Reads `~/.copilot/mcp-oauth-config/` | Copilot CLI users — zero config |
+| **API Keys** | `official` | `metricsPeek.datadogApiKey` + `datadogAppKey` | Users with Datadog API keys |
+| **Local CLI** | `official-local` | `datadog_mcp_cli login` | Users who prefer the local binary |
+| **Community** | `community` | API keys + npx | No Preview access needed |
 
-**Requirements:**
-- Node.js 18+ and `npx` in PATH
-- Set `metricsPeek.datadogApiKey` and `metricsPeek.datadogAppKey` in settings
+## Detected Patterns
 
-### 3. Configure
+The extension uses regex-based detection to identify metrics calls:
+
+| Language | Example Patterns |
+|----------|-----------------|
+| **Python** | `statsd.increment('orders.created')`, `dogstatsd.gauge(...)`, `statsd.histogram(...)` |
+| **Go** | `statsd.Incr("orders.created", ...)`, `statsClient.Increment(...)`, `statsd.Gauge(...)`, `client.Count(...)` |
+| **Ruby** | `StatsD.increment('orders.created')`, `Datadog::Statsd.count(...)` |
+| **JS/TS** | `statsd.increment('orders.created')`, `dogstatsd.gauge(...)`, `metrics.histogram(...)` |
+
+The detector handles `increment`/`decrement`/`Incr`/`Decr` and normalizes metric types to pick the right Datadog aggregation (`sum` for counts, `avg` for gauges, etc.).
+
+## Configuration
 
 Open VS Code Settings (`Cmd+,` / `Ctrl+,`) and search for **"Metrics Peek"**:
 
 | Setting | Type | Default | Description |
 |---------|------|---------|-------------|
-| `metricsPeek.mcpServer` | enum | `"official"` | MCP backend: `official` (remote HTTP), `official-local` (CLI binary), `community` (npx) |
-| `metricsPeek.datadogApiKey` | string | `""` | Datadog API key (not needed for `official-local`) |
-| `metricsPeek.datadogAppKey` | string | `""` | Datadog Application key (not needed for `official-local`) |
-| `metricsPeek.datadogSite` | string | `"datadoghq.com"` | Datadog site — determines the MCP endpoint region |
-| `metricsPeek.defaultTimeRange` | enum | `"1h"` | Default time range: `1h`, `4h`, `24h`, `1w` |
-| `metricsPeek.metricPrefix` | string | `""` | Optional prefix prepended to detected metric names (e.g., `myapp.`) |
+| `metricsPeek.mcpServer` | enum | `"official-oauth"` | MCP backend (see auth modes above) |
+| `metricsPeek.datadogApiKey` | string | `""` | Datadog API key (only for `official` and `community` modes) |
+| `metricsPeek.datadogAppKey` | string | `""` | Datadog App key (only for `official` and `community` modes) |
+| `metricsPeek.datadogSite` | string | `"datadoghq.com"` | Datadog site / region |
+| `metricsPeek.defaultTimeRange` | enum | `"1h"` | Time range: `1h`, `4h`, `24h`, `1w` |
+| `metricsPeek.metricPrefix` | string | `""` | Prefix prepended to metric names (e.g., `myapp.`) |
 
-> **Tip:** The extension will prompt you to configure API keys on first activation if they're missing.
+## Known Issues & Gotchas
 
-### 4. Usage
+### Metric prefix is required for most projects
+Your code says `statsClient.Increment("publish")` but Datadog knows it as `gateway_limiting_agent.publish`. **You must set `metricsPeek.metricPrefix`** to the namespace your StatsD client is configured with (including the trailing `.`). Without this, you'll see "No data found."
 
-1. Open any Python, Go, Ruby, JavaScript, or TypeScript file
-2. Hover over a metrics call (e.g., `statsd.increment("orders.created")`)
-3. See the inline sparkline graph with latest/avg/min/max stats
-4. Click **"View Full Graph"** to open the rich panel view with time range controls
+### Regex detection doesn't match all client variable names
+The Go detector matches `statsd`, `statsClient`, and `client` as variable names. If your project uses a different name (e.g., `ddClient.Incr(...)`), the hover won't trigger. File an issue or add your pattern to `src/metricDetector.ts`.
+
+### Session errors on restart
+If you restart the Extension Development Host, you may see "Invalid session ID" errors on the first hover. The extension auto-reconnects — just hover again and it should work.
+
+### OAuth token expiry
+The `official-oauth` mode reads tokens from `~/.copilot/mcp-oauth-config/`. If both the access token and refresh token are expired (e.g., you haven't used Copilot CLI in weeks), the auto-refresh will fail. Fix: use any Datadog MCP tool via Copilot CLI once to re-authenticate, then hover again.
+
+### First hover is slow
+The first hover establishes the MCP connection (~1-3 seconds). Subsequent hovers use the cached connection and return in ~200ms. Results are also cached for 60 seconds.
+
+### Metric names in variables aren't resolved
+If the code uses `statsd.Incr(metricName)` where `metricName` is a variable, the extension can't detect it (regex limitation). Only string literals are detected.
 
 ## Architecture
 
@@ -138,28 +152,16 @@ Open VS Code Settings (`Cmd+,` / `Ctrl+,`) and search for **"Metrics Peek"**:
 │  │  queryMetrics()   │  │  (transport auto-select) │     │
 │  └───────┬──────────┘  └──────────┬───────────────┘     │
 │          │                        │                      │
-│  ┌───────▼──────────┐             ├── StreamableHTTP ──▶ Official Datadog MCP (remote)
-│  │  GraphRenderer    │             ├── Stdio ──────────▶ datadog_mcp_cli (local binary)
-│  │  (SVG sparkline)  │             └── Stdio ──────────▶ @winor30/mcp-server-datadog (community)
-│  └──────────────────┘                                    │
+│  ┌───────▼──────────┐             ├── StreamableHTTP ──▶ Official Datadog MCP (OAuth)
+│  │  GraphRenderer    │             ├── StreamableHTTP ──▶ Official Datadog MCP (API keys)
+│  │  (SVG sparkline)  │             ├── Stdio ──────────▶ datadog_mcp_cli (local binary)
+│  └──────────────────┘             └── Stdio ──────────▶ @winor30/mcp-server-datadog
 │  ┌──────────────────┐                                    │
 │  │  WebviewPanel     │                                   │
 │  │  (rich chart)     │                                   │
 │  └──────────────────┘                                    │
 └─────────────────────────────────────────────────────────┘
 ```
-
-### How It Works
-
-1. The extension registers a `HoverProvider` for all supported languages
-2. On hover, regex patterns detect metrics calls and extract the metric name and type
-3. The metric type determines the Datadog aggregation function (`sum` for counts, `avg` for gauges)
-4. The MCP client connects to the configured backend:
-   - **`official`**: Streamable HTTP to `https://mcp.{site}/api/unstable/mcp-server/mcp` → calls `get_datadog_metric`
-   - **`official-local`**: Stdio to `datadog_mcp_cli` binary → calls `get_datadog_metric`
-   - **`community`**: Stdio to `npx @winor30/mcp-server-datadog` → calls `query_metrics`
-5. Data points are rendered as an SVG sparkline and embedded in the hover as a base64 `data:` URI (VS Code blocks remote images in hovers)
-6. Results are cached for 60 seconds keyed by metric query + time range
 
 ### File Structure
 
@@ -168,7 +170,9 @@ src/
 ├── extension.ts        # Entry point — activate/deactivate, register providers
 ├── config.ts           # Settings + MCP endpoint resolution per Datadog region
 ├── metricDetector.ts   # Language-specific regex patterns, metric name extraction
-├── mcpClient.ts        # MCP client — auto-selects transport (HTTP/stdio) per config
+├── mcpClient.ts        # MCP client — auto-selects transport, session retry, OAuth
+├── oauth.ts            # OAuth 2.1 PKCE flow for Datadog MCP authentication
+├── parseMetrics.ts     # Response parser — handles binned, CSV, and series formats
 ├── graphRenderer.ts    # SVG sparkline renderer, stats computation, formatting
 ├── hoverProvider.ts    # HoverProvider — detection + MCP + sparkline → tooltip
 └── webviewPanel.ts     # Webview panel for rich chart display with time controls
@@ -186,54 +190,8 @@ test/
 npm install          # Install dependencies
 npm run compile      # Build TypeScript → out/
 npm run watch        # Watch mode (auto-rebuild on save)
-npm test             # Run all 39 tests
+npm test             # Run tests (67 tests)
 ```
-
-### Testing
-
-Tests use Node.js built-in test runner (`node:test`) with `tsx` for TypeScript support:
-
-```bash
-$ npm test
-
-▶ detectMetric
-  ▶ Python ✔ (6 tests)
-  ▶ Go ✔ (4 tests)
-  ▶ Ruby ✔ (2 tests)
-  ▶ JavaScript/TypeScript ✔ (4 tests)
-▶ detectAllMetrics ✔
-▶ buildMetricQuery ✔ (3 tests)
-▶ defaultAggregation ✔ (3 tests)
-▶ renderSparkline ✔ (5 tests)
-▶ computeStats ✔ (3 tests)
-▶ formatNumber ✔ (6 tests)
-▶ svgToDataUri ✔
-
-ℹ tests 39 | pass 39 | fail 0
-```
-
-## Next Steps
-
-Here's what could come next, roughly in priority order:
-
-### Near-term
-- [ ] **End-to-end testing** — test the full hover flow with a mock MCP server to verify the sparkline renders correctly
-- [ ] **CodeLens integration** — show metric stats as a CodeLens annotation above the line (always visible, not just on hover)
-- [ ] **Tag extraction** — parse tags from the metrics call (e.g., `tags: ['env:prod']`) and include them in the Datadog query filter instead of `{*}`
-- [ ] **Clickable Datadog link** — add a "Open in Datadog" link in the hover/panel that deep-links to the metric explorer with the right query pre-filled
-
-### Medium-term
-- [ ] **AST-based detection** — replace regex with Tree-sitter or language server queries for more accurate detection (handles multi-line calls, variable metric names, etc.)
-- [ ] **Metric name from variables** — when the metric name is a variable/constant (e.g., `statsd.increment(METRIC_NAME)`), try to resolve it via simple static analysis or symbol lookup
-- [ ] **Anomaly highlighting** — use Datadog anomaly detection or simple threshold comparison to highlight metrics that look unusual (e.g., spike or drop in the last hour)
-- [ ] **Dashboard context** — when hovering, also show which Datadog dashboards include this metric (via the `list_dashboards` MCP tool)
-- [ ] **Monitor status** — show if there's an active Datadog monitor on this metric and its current status (OK/Alert/Warn) via the `get_monitors` MCP tool
-
-### Longer-term
-- [ ] **Marketplace publishing** — package as a `.vsix` and publish to the VS Code Marketplace
-- [ ] **Multiple MCP backends** — abstract the MCP client to support other observability backends (Prometheus, Grafana, New Relic) via different MCP servers
-- [ ] **Metric discovery** — command palette action to search all metrics in the codebase and show a summary dashboard in a Webview
-- [ ] **Team annotations** — let team members annotate metrics with context (e.g., "this spikes during deploys") stored in a shared config file
 
 ## License
 

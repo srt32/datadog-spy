@@ -20,13 +20,22 @@ const SITE_TO_MCP_ENDPOINT: Record<string, string> = {
 
 export function getConfig(): ExtensionConfig {
   const config = vscode.workspace.getConfiguration('metricsPeek');
+  const apiKey = config.get<string>('datadogApiKey', '');
+  const appKey = config.get<string>('datadogAppKey', '');
+  let mcpServer = config.get<'official' | 'official-local' | 'official-oauth' | 'community'>('mcpServer', 'official-oauth');
+
+  // Auto-detect: if no API keys and not explicitly set to something else, use OAuth if tokens exist
+  if (mcpServer === 'official' && !apiKey && !appKey) {
+    mcpServer = 'official-oauth';
+  }
+
   return {
-    datadogApiKey: config.get<string>('datadogApiKey', ''),
-    datadogAppKey: config.get<string>('datadogAppKey', ''),
+    datadogApiKey: apiKey,
+    datadogAppKey: appKey,
     datadogSite: config.get<string>('datadogSite', 'datadoghq.com'),
     defaultTimeRange: config.get<string>('defaultTimeRange', '1h'),
     metricPrefix: config.get<string>('metricPrefix', ''),
-    mcpServer: config.get<'official' | 'official-local' | 'official-oauth' | 'community'>('mcpServer', 'official'),
+    mcpServer,
   };
 }
 

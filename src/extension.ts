@@ -29,14 +29,14 @@ export function activate(context: vscode.ExtensionContext): void {
 
   // Register the open graph command
   context.subscriptions.push(
-    vscode.commands.registerCommand('metricsPeek.openGraph', (argsJson: string) => {
-      openGraphPanel(argsJson);
+    vscode.commands.registerCommand('metricsPeek.openGraph', (args: unknown) => {
+      openGraphPanel(args);
     })
   );
 
-  // Check for missing configuration and prompt user
+  // Check for missing configuration and prompt user (skip for modes that don't need API keys)
   const config = getConfig();
-  if (!config.datadogApiKey || !config.datadogAppKey) {
+  if (config.mcpServer !== 'official-local' && config.mcpServer !== 'official-oauth' && (!config.datadogApiKey || !config.datadogAppKey)) {
     vscode.window
       .showInformationMessage(
         'Metrics Peek: Configure your Datadog API key and App key to get started.',

@@ -42,9 +42,12 @@ export class MetricsHoverProvider implements vscode.HoverProvider {
       const data = await getCachedMetrics(metricQuery, config.defaultTimeRange);
 
       if (data.length === 0) {
+        const fullMetricName = config.metricPrefix ? `${config.metricPrefix}${match.metricName}` : match.metricName;
+        const explorerUrl = `https://app.${config.datadogSite}/metric/explorer?exp_metric=${encodeURIComponent(fullMetricName)}`;
         md.appendMarkdown(`**📊 ${match.metricName}** _(${match.metricType})_\n\n`);
         md.appendMarkdown(`_No data found for_ \`${metricQuery}\`\n\n`);
-        md.appendMarkdown(`Query: \`${metricQuery}\` | Range: ${config.defaultTimeRange}`);
+        md.appendMarkdown(`Mode: \`${config.mcpServer}\` | Tool: \`${config.mcpServer === 'community' ? 'query_metrics' : 'get_datadog_metric'}\`\n\n`);
+        md.appendMarkdown(`[Open in Metrics Explorer](${explorerUrl}) | Query: \`${metricQuery}\` | Range: ${config.defaultTimeRange}`);
         return new vscode.Hover(md);
       }
 
@@ -61,14 +64,17 @@ export class MetricsHoverProvider implements vscode.HoverProvider {
       );
       md.appendMarkdown(`<img src="${dataUri}" width="300" height="60" />\n\n`);
 
-      // Encode the metric info for the command
-      const args = encodeURIComponent(JSON.stringify({
+      // Encode the metric info for the command — VS Code command URIs use JSON array as query param
+      const cmdArgs = encodeURIComponent(JSON.stringify([{
         metricName: match.metricName,
         metricType: match.metricType,
         metricQuery,
-      }));
-      md.appendMarkdown(`[View Full Graph](command:metricsPeek.openGraph?${args})`);
-      md.appendMarkdown(` | Query: \`${metricQuery}\``);
+      }]));
+      const fullMetricName = config.metricPrefix ? `${config.metricPrefix}${match.metricName}` : match.metricName;
+      const explorerUrl = `https://app.${config.datadogSite}/metric/explorer?exp_metric=${encodeURIComponent(fullMetricName)}`;
+      md.appendMarkdown(`[View Full Graph](command:metricsPeek.openGraph?${cmdArgs})`);
+      md.appendMarkdown(` | [Open in Datadog](${explorerUrl})`);
+      md.appendMarkdown(` | \`${metricQuery}\``);
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Unknown error';
       md.appendMarkdown(`**📊 ${match.metricName}** _(${match.metricType})_\n\n`);

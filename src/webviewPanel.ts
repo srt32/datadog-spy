@@ -11,10 +11,16 @@ interface GraphArgs {
 
 let currentPanel: vscode.WebviewPanel | null = null;
 
-export function openGraphPanel(argsJson: string): void {
-  let args: GraphArgs;
+export function openGraphPanel(args: unknown): void {
+  let graphArgs: GraphArgs;
   try {
-    args = JSON.parse(argsJson);
+    if (typeof args === 'string') {
+      graphArgs = JSON.parse(args);
+    } else if (typeof args === 'object' && args !== null) {
+      graphArgs = args as GraphArgs;
+    } else {
+      throw new Error('Invalid args type');
+    }
   } catch {
     vscode.window.showErrorMessage('Metrics Peek: Invalid graph arguments');
     return;
@@ -25,7 +31,7 @@ export function openGraphPanel(argsJson: string): void {
   } else {
     currentPanel = vscode.window.createWebviewPanel(
       'metricsPeekGraph',
-      `📊 ${args.metricName}`,
+      `📊 ${graphArgs.metricName}`,
       vscode.ViewColumn.Beside,
       { enableScripts: true }
     );
@@ -35,8 +41,8 @@ export function openGraphPanel(argsJson: string): void {
     });
   }
 
-  currentPanel.title = `📊 ${args.metricName}`;
-  loadGraphData(currentPanel, args);
+  currentPanel.title = `📊 ${graphArgs.metricName}`;
+  loadGraphData(currentPanel, graphArgs);
 }
 
 async function loadGraphData(panel: vscode.WebviewPanel, args: GraphArgs): Promise<void> {

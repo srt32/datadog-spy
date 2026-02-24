@@ -60,7 +60,7 @@
         },
         "metricsPeek.mcpServer": {
           "type": "string",
-          "default": "official",
+          "default": "official-oauth",
           "enum": ["official", "official-oauth", "official-local", "community"],
           "enumDescriptions": [
             "Official Datadog MCP Server (remote, via Streamable HTTP) — requires API key + App key",

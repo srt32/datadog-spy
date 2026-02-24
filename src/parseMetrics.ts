@@ -12,9 +12,37 @@ export function parseMetricsResponse(result: unknown): DataPoint[] {
     }
 
     const text = res.content[0].text;
-    const parsed = JSON.parse(text);
 
-    // The Datadog metrics API returns series data
+    // Strip XML-style wrappers (e.g., <METADATA>...</METADATA>, <JSON_DATA>...</JSON_DATA>)
+    let jsonText = text;
+    const jsonDataMatch = text.match(/<JSON_DATA>\s*([\s\S]*?)\s*<\/JSON_DATA>/);
+    if (jsonDataMatch) {
+      jsonText = jsonDataMatch[1];
+    }
+
+    const parsed = JSON.parse(jsonText);
+
+    // Official Datadog MCP: binned format with overall_stats
+    // Shape: [{ expression, binned: [{ start_time, avg, min, max, count }], overall_stats }]
+    if (Array.isArray(parsed) && parsed.length > 0 && parsed[0].binned) {
+      return parsed[0].binned.map((bin: { start_time: string; avg: number }) => ({
+        timestamp: new Date(bin.start_time).getTime() / 1000,
+        value: bin.avg || 0,
+      }));
+    }
+
+    // Official Datadog MCP: CSV format with start_time and interval_ms
+    if (Array.isArray(parsed) && parsed.length > 0 && parsed[0].csv) {
+      const entry = parsed[0];
+      const startMs = new Date(entry.start_time || 0).getTime();
+      const intervalMs = entry.interval_ms || 60000;
+      return entry.csv.split(',').map((val: string, i: number) => ({
+        timestamp: (startMs + i * intervalMs) / 1000,
+        value: parseFloat(val) || 0,
+      }));
+    }
+
+    // The Datadog metrics API returns series data (community server format)
     if (parsed.series && Array.isArray(parsed.series) && parsed.series.length > 0) {
       const series = parsed.series[0];
       const pointlist = series.pointlist || series.point_list || [];

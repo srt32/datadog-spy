@@ -26,7 +26,7 @@ const PYTHON_PATTERNS: LanguagePattern[] = [
 
 const GO_PATTERNS: LanguagePattern[] = [
   {
-    pattern: /(?:statsd|client)\.(Incr|Decr|Gauge|Count|Histogram|Distribution|Timing|TimeInMilliseconds|Set|Event)\s*\(\s*"([^"]+)"/gi,
+    pattern: /(?:statsd|statsClient|client)\.(Incr|Increment|Decr|Gauge|Count|Histogram|Distribution|Timing|TimeInMilliseconds|Set|Event)\s*\(\s*"([^"]+)"/gi,
     nameGroup: 2,
     typeGroup: 1,
   },
