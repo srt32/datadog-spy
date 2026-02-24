@@ -49,6 +49,57 @@ describe('renderSparkline', () => {
     assert.ok(svg.includes('width="300"'));
     assert.ok(svg.includes('height="60"'));
   });
+
+  it('handles flat values (all same)', () => {
+    const data: DataPoint[] = [
+      { timestamp: 1000, value: 50 },
+      { timestamp: 1060, value: 50 },
+      { timestamp: 1120, value: 50 },
+    ];
+    const svg = renderSparkline(data);
+    assert.ok(svg.includes('<polyline'));
+    assert.ok(svg.includes('<svg'));
+  });
+
+  it('handles negative values', () => {
+    const data: DataPoint[] = [
+      { timestamp: 1000, value: -10 },
+      { timestamp: 1060, value: -5 },
+      { timestamp: 1120, value: -20 },
+    ];
+    const svg = renderSparkline(data);
+    assert.ok(svg.includes('<polyline'));
+  });
+
+  it('handles large dataset', () => {
+    const data: DataPoint[] = Array.from({ length: 1000 }, (_, i) => ({
+      timestamp: 1000 + i * 60,
+      value: Math.sin(i / 10) * 100,
+    }));
+    const svg = renderSparkline(data);
+    assert.ok(svg.includes('<polyline'));
+    assert.ok(svg.includes('<polygon'));
+  });
+
+  it('uses custom dimensions', () => {
+    const data: DataPoint[] = [
+      { timestamp: 1000, value: 10 },
+      { timestamp: 1060, value: 20 },
+    ];
+    const svg = renderSparkline(data, { width: 500, height: 100 });
+    assert.ok(svg.includes('width="500"'));
+    assert.ok(svg.includes('height="100"'));
+  });
+
+  it('includes time labels from data', () => {
+    const data: DataPoint[] = [
+      { timestamp: 1700000000, value: 10 },
+      { timestamp: 1700003600, value: 20 },
+    ];
+    const svg = renderSparkline(data);
+    // Should contain time text elements
+    assert.ok(svg.includes('<text'));
+  });
 });
 
 describe('computeStats', () => {

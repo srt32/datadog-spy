@@ -126,6 +126,69 @@ describe('detectMetric', () => {
       assert.strictEqual(result, null);
     });
   });
+
+  describe('edge cases', () => {
+    it('detects metric with leading whitespace (indented code)', () => {
+      const result = detectMetric("    statsd.increment('orders.created')", 'python');
+      assert.ok(result);
+      assert.strictEqual(result.metricName, 'orders.created');
+      assert.ok(result.startIndex >= 4);
+    });
+
+    it('detects decrement', () => {
+      const result = detectMetric("statsd.decrement('active.connections')", 'python');
+      assert.ok(result);
+      assert.strictEqual(result.metricName, 'active.connections');
+      assert.strictEqual(result.metricType, 'count');
+    });
+
+    it('detects Go Decr', () => {
+      const result = detectMetric('statsd.Decr("active.connections", tags, 1)', 'go');
+      assert.ok(result);
+      assert.strictEqual(result.metricName, 'active.connections');
+      assert.strictEqual(result.metricType, 'count');
+    });
+
+    it('does not match inside comments (still matches — regex limitation)', () => {
+      // This documents current behavior: we match inside comments
+      const result = detectMetric("# statsd.increment('commented.out')", 'python');
+      assert.ok(result, 'regex matches in comments (known limitation)');
+    });
+
+    it('handles metric names with dots and underscores', () => {
+      const result = detectMetric("statsd.gauge('my_app.api.v2.response_time', val)", 'python');
+      assert.ok(result);
+      assert.strictEqual(result.metricName, 'my_app.api.v2.response_time');
+    });
+
+    it('handles metric names with hyphens', () => {
+      const result = detectMetric("statsd.increment('my-service.requests')", 'javascript');
+      assert.ok(result);
+      assert.strictEqual(result.metricName, 'my-service.requests');
+    });
+
+    it('handles DogStatsd class in Python', () => {
+      const result = detectMetric("DogStatsd.gauge('memory.used', mem)", 'python');
+      assert.ok(result);
+      assert.strictEqual(result.metricName, 'memory.used');
+    });
+
+    it('handles Datadog::Statsd in Ruby', () => {
+      const result = detectMetric("Datadog::Statsd.histogram('query.time', elapsed)", 'ruby');
+      assert.ok(result);
+      assert.strictEqual(result.metricName, 'query.time');
+      assert.strictEqual(result.metricType, 'histogram');
+    });
+
+    it('returns correct startIndex and endIndex', () => {
+      const line = "    statsd.increment('my.metric', 1)";
+      const result = detectMetric(line, 'python');
+      assert.ok(result);
+      const matched = line.substring(result.startIndex, result.endIndex);
+      assert.ok(matched.includes('statsd.increment'));
+      assert.ok(matched.includes('my.metric'));
+    });
+  });
 });
 
 describe('detectAllMetrics', () => {

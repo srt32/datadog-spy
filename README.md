@@ -38,15 +38,7 @@ The detector also handles `decrement`/`Decr` variants. Metric type is normalized
 
 ## Setup
 
-### Prerequisites
-
-- **Node.js 18+** — needed to run the MCP server subprocess
-- **npx** available in your PATH
-- **Datadog API key** and **Application key** with metrics read access ([create keys here](https://app.datadoghq.com/organization-settings/api-keys))
-
-### Install
-
-Build locally and run in the Extension Development Host:
+### 1. Install the Extension
 
 ```bash
 git clone https://github.com/srt32/datadog-spy.git
@@ -55,23 +47,74 @@ npm install
 npm run compile
 ```
 
-Then open the project in VS Code and press **F5** to launch the Extension Development Host.
+Open the project in VS Code and press **F5** to launch the Extension Development Host.
 
-### Configure
+### 2. Choose Your MCP Backend
+
+The extension supports three ways to connect to Datadog. Set `metricsPeek.mcpServer` in VS Code Settings:
+
+#### Option A: Official Datadog MCP Server — Remote (Recommended)
+
+Uses the [official Datadog MCP Server](https://docs.datadoghq.com/bits_ai/mcp_server/) via Streamable HTTP. This is a managed remote service with the richest feature set.
+
+```
+metricsPeek.mcpServer: "official"
+```
+
+**Requirements:**
+- Datadog org must be [allowlisted for the Preview](https://www.datadoghq.com/product-preview/datadog-mcp-server/)
+- Set `metricsPeek.datadogApiKey` and `metricsPeek.datadogAppKey` in settings
+- Set `metricsPeek.datadogSite` to match your Datadog region (e.g., `datadoghq.com`, `datadoghq.eu`, `us5.datadoghq.com`)
+
+The extension connects to the regional endpoint (e.g., `https://mcp.datadoghq.com/api/unstable/mcp-server/mcp`) and authenticates with your API keys via HTTP headers.
+
+#### Option B: Official Datadog MCP Server — Local Binary
+
+Uses the official `datadog_mcp_cli` binary over stdio. Useful if you prefer OAuth login or your org requires it.
+
+```
+metricsPeek.mcpServer: "official-local"
+```
+
+**Requirements:**
+1. Install the CLI:
+   ```bash
+   curl -sSL https://coterm.datadoghq.com/mcp-cli/install.sh | bash
+   ```
+2. Log in once:
+   ```bash
+   datadog_mcp_cli login
+   ```
+3. No API keys needed in VS Code settings — auth is handled by the CLI.
+
+#### Option C: Community MCP Server
+
+Uses the community-maintained [`@winor30/mcp-server-datadog`](https://github.com/winor30/mcp-server-datadog) via npx. No Preview access required.
+
+```
+metricsPeek.mcpServer: "community"
+```
+
+**Requirements:**
+- Node.js 18+ and `npx` in PATH
+- Set `metricsPeek.datadogApiKey` and `metricsPeek.datadogAppKey` in settings
+
+### 3. Configure
 
 Open VS Code Settings (`Cmd+,` / `Ctrl+,`) and search for **"Metrics Peek"**:
 
 | Setting | Type | Default | Description |
 |---------|------|---------|-------------|
-| `metricsPeek.datadogApiKey` | string | `""` | Your Datadog API key |
-| `metricsPeek.datadogAppKey` | string | `""` | Your Datadog Application key |
-| `metricsPeek.datadogSite` | string | `"datadoghq.com"` | Datadog site (e.g., `datadoghq.eu`, `us5.datadoghq.com`) |
+| `metricsPeek.mcpServer` | enum | `"official"` | MCP backend: `official` (remote HTTP), `official-local` (CLI binary), `community` (npx) |
+| `metricsPeek.datadogApiKey` | string | `""` | Datadog API key (not needed for `official-local`) |
+| `metricsPeek.datadogAppKey` | string | `""` | Datadog Application key (not needed for `official-local`) |
+| `metricsPeek.datadogSite` | string | `"datadoghq.com"` | Datadog site — determines the MCP endpoint region |
 | `metricsPeek.defaultTimeRange` | enum | `"1h"` | Default time range: `1h`, `4h`, `24h`, `1w` |
 | `metricsPeek.metricPrefix` | string | `""` | Optional prefix prepended to detected metric names (e.g., `myapp.`) |
 
 > **Tip:** The extension will prompt you to configure API keys on first activation if they're missing.
 
-### Usage
+### 4. Usage
 
 1. Open any Python, Go, Ruby, JavaScript, or TypeScript file
 2. Hover over a metrics call (e.g., `statsd.increment("orders.created")`)
@@ -91,14 +134,18 @@ Open VS Code Settings (`Cmd+,` / `Ctrl+,`) and search for **"Metrics Peek"**:
 │  └───────┬──────────┘  └──────────────────────────┘     │
 │          │                                               │
 │  ┌───────▼──────────┐  ┌──────────────────────────┐     │
-│  │  MCP Client       │──│  MCP SDK (stdio)         │──────── spawns ──▶ @winor30/mcp-server-datadog
-│  │  queryMetrics()   │  │  StdioClientTransport    │     │
-│  └───────┬──────────┘  └──────────────────────────┘     │
-│          │                                               │
-│  ┌───────▼──────────┐  ┌──────────────────────────┐     │
-│  │  GraphRenderer    │  │  WebviewPanel             │     │
-│  │  (SVG sparkline)  │  │  (rich chart + controls)  │     │
-│  └──────────────────┘  └──────────────────────────┘     │
+│  │  MCP Client       │──│  MCP SDK                 │     │
+│  │  queryMetrics()   │  │  (transport auto-select) │     │
+│  └───────┬──────────┘  └──────────┬───────────────┘     │
+│          │                        │                      │
+│  ┌───────▼──────────┐             ├── StreamableHTTP ──▶ Official Datadog MCP (remote)
+│  │  GraphRenderer    │             ├── Stdio ──────────▶ datadog_mcp_cli (local binary)
+│  │  (SVG sparkline)  │             └── Stdio ──────────▶ @winor30/mcp-server-datadog (community)
+│  └──────────────────┘                                    │
+│  ┌──────────────────┐                                    │
+│  │  WebviewPanel     │                                   │
+│  │  (rich chart)     │                                   │
+│  └──────────────────┘                                    │
 └─────────────────────────────────────────────────────────┘
 ```
 
@@ -107,26 +154,30 @@ Open VS Code Settings (`Cmd+,` / `Ctrl+,`) and search for **"Metrics Peek"**:
 1. The extension registers a `HoverProvider` for all supported languages
 2. On hover, regex patterns detect metrics calls and extract the metric name and type
 3. The metric type determines the Datadog aggregation function (`sum` for counts, `avg` for gauges)
-4. The MCP SDK spawns `@winor30/mcp-server-datadog` as a subprocess and connects via stdio
-5. The `query_metrics` MCP tool fetches time-series data from the Datadog API
-6. Data points are rendered as an SVG sparkline and embedded in the hover as a base64 `data:` URI (VS Code blocks remote images in hovers)
-7. Results are cached for 60 seconds keyed by metric query + time range
+4. The MCP client connects to the configured backend:
+   - **`official`**: Streamable HTTP to `https://mcp.{site}/api/unstable/mcp-server/mcp` → calls `get_datadog_metric`
+   - **`official-local`**: Stdio to `datadog_mcp_cli` binary → calls `get_datadog_metric`
+   - **`community`**: Stdio to `npx @winor30/mcp-server-datadog` → calls `query_metrics`
+5. Data points are rendered as an SVG sparkline and embedded in the hover as a base64 `data:` URI (VS Code blocks remote images in hovers)
+6. Results are cached for 60 seconds keyed by metric query + time range
 
 ### File Structure
 
 ```
 src/
 ├── extension.ts        # Entry point — activate/deactivate, register providers
-├── config.ts           # Reads VS Code extension settings
+├── config.ts           # Settings + MCP endpoint resolution per Datadog region
 ├── metricDetector.ts   # Language-specific regex patterns, metric name extraction
-├── mcpClient.ts        # MCP SDK client, spawns Datadog MCP server subprocess
+├── mcpClient.ts        # MCP client — auto-selects transport (HTTP/stdio) per config
 ├── graphRenderer.ts    # SVG sparkline renderer, stats computation, formatting
 ├── hoverProvider.ts    # HoverProvider — detection + MCP + sparkline → tooltip
 └── webviewPanel.ts     # Webview panel for rich chart display with time controls
 
 test/
-├── metricDetector.test.ts  # 22 tests for detection across all languages
-└── graphRenderer.test.ts   # 17 tests for rendering, stats, formatting
+├── metricDetector.test.ts  # Detection tests across all languages + edge cases
+├── graphRenderer.test.ts   # Rendering, stats, formatting tests
+├── mcpClient.test.ts       # MCP response parsing tests
+└── config.test.ts          # Time range conversion tests
 ```
 
 ## Development
