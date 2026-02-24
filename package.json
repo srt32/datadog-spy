@@ -1,7 +1,11 @@
 {
-  "name": "metrics-peek",
-  "displayName": "Metrics Peek",
+  "name": "datadog-spy",
+  "displayName": "Datadog Spy",
   "description": "Hover over metrics calls to see live Datadog graphs from production",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/srt32/datadog-spy"
+  },
   "version": "0.1.0",
   "publisher": "srt32",
   "engines": {
