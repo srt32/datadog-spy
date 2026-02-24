@@ -1,4 +1,7 @@
 import * as vscode from 'vscode';
+import * as fs from 'fs';
+import * as path from 'path';
+import * as os from 'os';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
@@ -49,6 +52,45 @@ function updateStatus(status: 'connected' | 'connecting' | 'disconnected' | 'err
   }
 }
 
+/**
+ * Reads the cached OAuth access token from the Copilot CLI's MCP OAuth config.
+ * Looks for a token file whose config matches the Datadog MCP server URL.
+ */
+function readCopilotOAuthToken(site: string): string {
+  const oauthDir = path.join(os.homedir(), '.copilot', 'mcp-oauth-config');
+  if (!fs.existsSync(oauthDir)) {
+    throw new Error('No Copilot MCP OAuth config found. Run Copilot CLI to authenticate with Datadog first.');
+  }
+
+  const targetUrl = getMcpEndpoint(site);
+  const files = fs.readdirSync(oauthDir).filter(f => f.endsWith('.json') && !f.endsWith('.tokens.json'));
+
+  for (const file of files) {
+    try {
+      const config = JSON.parse(fs.readFileSync(path.join(oauthDir, file), 'utf-8'));
+      if (config.serverUrl && config.serverUrl.replace(/\?$/, '') === targetUrl.replace(/\?$/, '')) {
+        const tokensFile = file.replace('.json', '.tokens.json');
+        const tokensPath = path.join(oauthDir, tokensFile);
+        if (!fs.existsSync(tokensPath)) {
+          throw new Error('OAuth tokens not found. Re-authenticate via Copilot CLI.');
+        }
+        const tokens = JSON.parse(fs.readFileSync(tokensPath, 'utf-8'));
+        if (!tokens.accessToken) {
+          throw new Error('OAuth access token missing. Re-authenticate via Copilot CLI.');
+        }
+        if (tokens.expiresAt && tokens.expiresAt * 1000 < Date.now()) {
+          throw new Error('OAuth token expired. Re-authenticate via Copilot CLI.');
+        }
+        return tokens.accessToken;
+      }
+    } catch (err) {
+      if (err instanceof Error && err.message.includes('OAuth')) { throw err; }
+      // Skip malformed config files
+    }
+  }
+  throw new Error('No Datadog OAuth token found in Copilot config. Ensure Datadog MCP is configured in ~/.copilot/mcp-config.json and authenticated.');
+}
+
 function createTransport(config: ReturnType<typeof getConfig>): Transport {
   switch (config.mcpServer) {
     case 'official': {
@@ -60,6 +102,19 @@ function createTransport(config: ReturnType<typeof getConfig>): Transport {
           headers: {
             'DD_API_KEY': config.datadogApiKey,
             'DD_APPLICATION_KEY': config.datadogAppKey,
+          },
+        },
+      });
+    }
+    case 'official-oauth': {
+      // Official Datadog MCP server via Streamable HTTP with Copilot CLI OAuth tokens
+      const endpoint = getMcpEndpoint(config.datadogSite);
+      const url = new URL(endpoint);
+      const accessToken = readCopilotOAuthToken(config.datadogSite);
+      return new StreamableHTTPClientTransport(url, {
+        requestInit: {
+          headers: {
+            'Authorization': `Bearer ${accessToken}`,
           },
         },
       });
@@ -123,7 +178,7 @@ export async function getClient(): Promise<Client> {
     const config = getConfig();
 
     // API keys required for official (remote) and community modes
-    if (config.mcpServer !== 'official-local' && (!config.datadogApiKey || !config.datadogAppKey)) {
+    if (config.mcpServer !== 'official-local' && config.mcpServer !== 'official-oauth' && (!config.datadogApiKey || !config.datadogAppKey)) {
       throw new Error(
         'Datadog API key and App key are required. Configure them in Settings → Metrics Peek.'
       );

@@ -61,9 +61,10 @@
         "metricsPeek.mcpServer": {
           "type": "string",
           "default": "official",
-          "enum": ["official", "official-local", "community"],
+          "enum": ["official", "official-oauth", "official-local", "community"],
           "enumDescriptions": [
             "Official Datadog MCP Server (remote, via Streamable HTTP) — requires API key + App key",
+            "Official Datadog MCP Server (remote, via Streamable HTTP) — uses OAuth tokens from Copilot CLI (~/.copilot/mcp-oauth-config/)",
             "Official Datadog MCP Server (local binary) — requires datadog_mcp_cli installed and logged in",
             "Community MCP Server (@winor30/mcp-server-datadog via npx) — requires API key + App key"
           ],

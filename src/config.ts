@@ -6,7 +6,7 @@ export interface ExtensionConfig {
   datadogSite: string;
   defaultTimeRange: string;
   metricPrefix: string;
-  mcpServer: 'official' | 'official-local' | 'community';
+  mcpServer: 'official' | 'official-local' | 'official-oauth' | 'community';
 }
 
 const SITE_TO_MCP_ENDPOINT: Record<string, string> = {
@@ -26,7 +26,7 @@ export function getConfig(): ExtensionConfig {
     datadogSite: config.get<string>('datadogSite', 'datadoghq.com'),
     defaultTimeRange: config.get<string>('defaultTimeRange', '1h'),
     metricPrefix: config.get<string>('metricPrefix', ''),
-    mcpServer: config.get<'official' | 'official-local' | 'community'>('mcpServer', 'official'),
+    mcpServer: config.get<'official' | 'official-local' | 'official-oauth' | 'community'>('mcpServer', 'official'),
   };
 }
 
