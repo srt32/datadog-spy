@@ -1,4 +1,5 @@
 import * as vscode from 'vscode';
+import * as crypto from 'crypto';
 import { queryMetrics } from './mcpClient';
 import { DataPoint, computeStats, formatNumber } from './graphRenderer';
 import { getConfig, timeRangeToSeconds } from './config';
@@ -33,7 +34,7 @@ export function openGraphPanel(args: unknown): void {
       'metricsPeekGraph',
       `📊 ${graphArgs.metricName}`,
       vscode.ViewColumn.Beside,
-      { enableScripts: true }
+      { enableScripts: true, localResourceRoots: [] }
     );
 
     currentPanel.onDidDispose(() => {
@@ -46,7 +47,8 @@ export function openGraphPanel(args: unknown): void {
 }
 
 async function loadGraphData(panel: vscode.WebviewPanel, args: GraphArgs): Promise<void> {
-  panel.webview.html = getLoadingHtml(args.metricName);
+  const nonce = crypto.randomBytes(16).toString('hex');
+  panel.webview.html = getLoadingHtml(args.metricName, nonce);
 
   try {
     const config = getConfig();
@@ -57,7 +59,7 @@ async function loadGraphData(panel: vscode.WebviewPanel, args: GraphArgs): Promi
     const data = await queryMetrics(args.metricQuery, from, now);
     const stats = computeStats(data);
 
-    panel.webview.html = getGraphHtml(args, data, stats, config.defaultTimeRange);
+    panel.webview.html = getGraphHtml(args, data, stats, config.defaultTimeRange, crypto.randomBytes(16).toString('hex'));
 
     // Handle messages from the webview (time range changes)
     panel.webview.onDidReceiveMessage(async (message: { type: string; range: string }) => {
@@ -66,25 +68,26 @@ async function loadGraphData(panel: vscode.WebviewPanel, args: GraphArgs): Promi
         const newFrom = Math.floor(Date.now() / 1000) - newRangeSeconds;
         const newTo = Math.floor(Date.now() / 1000);
 
-        panel.webview.html = getLoadingHtml(args.metricName);
+        panel.webview.html = getLoadingHtml(args.metricName, crypto.randomBytes(16).toString('hex'));
         try {
           const newData = await queryMetrics(args.metricQuery, newFrom, newTo);
           const newStats = computeStats(newData);
-          panel.webview.html = getGraphHtml(args, newData, newStats, message.range);
+          panel.webview.html = getGraphHtml(args, newData, newStats, message.range, crypto.randomBytes(16).toString('hex'));
         } catch (err) {
-          panel.webview.html = getErrorHtml(args.metricName, err instanceof Error ? err.message : 'Unknown error');
+          panel.webview.html = getErrorHtml(args.metricName, err instanceof Error ? err.message : 'Unknown error', crypto.randomBytes(16).toString('hex'));
         }
       }
     });
   } catch (err) {
-    panel.webview.html = getErrorHtml(args.metricName, err instanceof Error ? err.message : 'Unknown error');
+    panel.webview.html = getErrorHtml(args.metricName, err instanceof Error ? err.message : 'Unknown error', crypto.randomBytes(16).toString('hex'));
   }
 }
 
-function getLoadingHtml(metricName: string): string {
+function getLoadingHtml(metricName: string, nonce: string): string {
   return `<!DOCTYPE html>
 <html>
 <head>
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'nonce-${nonce}';">
   <style>
     body { font-family: var(--vscode-font-family, sans-serif); color: var(--vscode-foreground, #ccc); background: var(--vscode-editor-background, #1e1e1e); padding: 20px; display: flex; align-items: center; justify-content: center; min-height: 200px; }
     .loading { text-align: center; }
@@ -101,10 +104,11 @@ function getLoadingHtml(metricName: string): string {
 </html>`;
 }
 
-function getErrorHtml(metricName: string, error: string): string {
+function getErrorHtml(metricName: string, error: string, nonce: string): string {
   return `<!DOCTYPE html>
 <html>
 <head>
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'nonce-${nonce}';">
   <style>
     body { font-family: var(--vscode-font-family, sans-serif); color: var(--vscode-foreground, #ccc); background: var(--vscode-editor-background, #1e1e1e); padding: 20px; }
     .error { color: var(--vscode-errorForeground, #f44); }
@@ -117,7 +121,7 @@ function getErrorHtml(metricName: string, error: string): string {
 </html>`;
 }
 
-function getGraphHtml(args: GraphArgs, data: DataPoint[], stats: { avg: number; min: number; max: number; latest: number }, activeRange: string): string {
+function getGraphHtml(args: GraphArgs, data: DataPoint[], stats: { avg: number; min: number; max: number; latest: number }, activeRange: string, nonce: string): string {
   const ranges = ['1h', '4h', '24h', '1w'];
 
   // Build SVG chart
@@ -179,6 +183,7 @@ function getGraphHtml(args: GraphArgs, data: DataPoint[], stats: { avg: number; 
   return `<!DOCTYPE html>
 <html>
 <head>
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data:; style-src 'unsafe-inline'; script-src 'nonce-${nonce}';">
   <style>
     body {
       font-family: var(--vscode-font-family, -apple-system, sans-serif);
@@ -267,18 +272,23 @@ function getGraphHtml(args: GraphArgs, data: DataPoint[], stats: { avg: number; 
   </div>
 
   <div class="ranges">
-    ${ranges.map(r => `<button class="range-btn ${r === activeRange ? 'active' : ''}" onclick="changeRange('${r}')">${r}</button>`).join('\n    ')}
+    ${ranges.map(r => `<button class="range-btn ${r === activeRange ? 'active' : ''}" data-range="${r}">${r}</button>`).join('\n    ')}
   </div>
 
   <div class="chart">${chartSvg}</div>
 
   <div class="query">Query: <code>${escapeHtml(args.metricQuery)}</code></div>
 
-  <script>
+  <script nonce="${nonce}">
     const vscode = acquireVsCodeApi();
-    function changeRange(range) {
-      vscode.postMessage({ type: 'changeRange', range });
-    }
+    document.querySelectorAll('.range-btn').forEach(function(btn) {
+      btn.addEventListener('click', function() {
+        const range = btn.dataset.range;
+        if (range) {
+          vscode.postMessage({ type: 'changeRange', range: range });
+        }
+      });
+    });
   </script>
 </body>
 </html>`;

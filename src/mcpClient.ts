@@ -75,8 +75,11 @@ async function refreshOAuthToken(
 
   return new Promise((resolve, reject) => {
     const url = new URL(tokenUrl);
-    const http = url.protocol === 'https:' ? require('https') : require('http');
-    const req = http.request(
+    if (url.protocol !== 'https:') {
+      reject(new Error('OAuth token refresh requires an HTTPS endpoint'));
+      return;
+    }
+    const req = require('https').request(
       {
         hostname: url.hostname,
         path: url.pathname,
@@ -117,13 +120,16 @@ async function refreshOAuthToken(
 }
 
 /**
- * Fetches JSON from a URL.
+ * Fetches JSON from a URL. Only HTTPS is supported.
  */
 function fetchJson(url: string): Promise<any> {
   return new Promise((resolve, reject) => {
     const parsedUrl = new URL(url);
-    const http = parsedUrl.protocol === 'https:' ? require('https') : require('http');
-    http.get(url, (res: any) => {
+    if (parsedUrl.protocol !== 'https:') {
+      reject(new Error('Only HTTPS endpoints are supported'));
+      return;
+    }
+    require('https').get(url, (res: any) => {
       let data = '';
       res.on('data', (chunk: string) => (data += chunk));
       res.on('end', () => {
@@ -326,14 +332,6 @@ export async function queryMetrics(
       throw err;
     }
   }
-
-  // Log raw response for debugging
-  try {
-    const res = result as { content?: Array<{ text: string }> };
-    const rawText = res.content?.[0]?.text || JSON.stringify(result);
-    console.log('[datadog-spy] Tool:', toolName, 'Args:', JSON.stringify(args));
-    console.log('[datadog-spy] Raw response (first 1000 chars):', rawText.substring(0, 1000));
-  } catch {}
 
   return parseMetricsResponse(result);
 }
