@@ -91,7 +91,7 @@
     "watch": "tsc -watch -p ./",
     "lint": "eslint src/ test/",
     "lint:fix": "eslint src/ test/ --fix",
-    "test": "node --import tsx --test test/**/*.test.ts",
+    "test": "node --import tsx --test test/config.test.ts test/graphRenderer.test.ts test/mcpClient.test.ts test/metricDetector.test.ts",
     "ci": "npm run lint && npm run compile && npm test"
   },
   "dependencies": {
