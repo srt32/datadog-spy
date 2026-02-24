@@ -26,7 +26,7 @@ const PYTHON_PATTERNS: LanguagePattern[] = [
 
 const GO_PATTERNS: LanguagePattern[] = [
   {
-    pattern: /(?:statsd|statsClient|client)\.(Incr|Increment|Decr|Gauge|Count|Histogram|Distribution|Timing|TimeInMilliseconds|Set|Event)\s*\(\s*"([^"]+)"/gi,
+    pattern: /(?:statsd|statsClient|client)\.(Incr|Increment|Decr|Gauge|Count|Counter|Histogram|Distribution|Timing|TimeInMilliseconds|Set|Event)\s*\(\s*"([^"]+)"/gi,
     nameGroup: 2,
     typeGroup: 1,
   },
@@ -69,7 +69,7 @@ function normalizeMetricType(raw: string): string {
     decrement: 'count',
     decr: 'count',
     count: 'count',
-    gauge: 'gauge',
+    counter: 'count',
     histogram: 'histogram',
     distribution: 'distribution',
     timing: 'timing',
