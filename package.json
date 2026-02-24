@@ -1,0 +1,75 @@
+{
+  "name": "metrics-peek",
+  "displayName": "Metrics Peek",
+  "description": "Hover over metrics calls to see live Datadog graphs from production",
+  "version": "0.1.0",
+  "publisher": "srt32",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": ["Other"],
+  "activationEvents": [
+    "onLanguage:python",
+    "onLanguage:go",
+    "onLanguage:ruby",
+    "onLanguage:javascript",
+    "onLanguage:typescript",
+    "onLanguage:typescriptreact",
+    "onLanguage:javascriptreact"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "metricsPeek.openGraph",
+        "title": "Metrics Peek: Open Graph"
+      }
+    ],
+    "configuration": {
+      "title": "Metrics Peek",
+      "properties": {
+        "metricsPeek.datadogApiKey": {
+          "type": "string",
+          "default": "",
+          "description": "Datadog API key for authenticating with the Datadog MCP server"
+        },
+        "metricsPeek.datadogAppKey": {
+          "type": "string",
+          "default": "",
+          "description": "Datadog Application key for authenticating with the Datadog MCP server"
+        },
+        "metricsPeek.datadogSite": {
+          "type": "string",
+          "default": "datadoghq.com",
+          "description": "Datadog site (e.g., datadoghq.com, datadoghq.eu, us5.datadoghq.com)"
+        },
+        "metricsPeek.defaultTimeRange": {
+          "type": "string",
+          "default": "1h",
+          "enum": ["1h", "4h", "24h", "1w"],
+          "description": "Default time range for metric graphs"
+        },
+        "metricsPeek.metricPrefix": {
+          "type": "string",
+          "default": "",
+          "description": "Optional prefix prepended to detected metric names (e.g., 'myapp.')"
+        }
+      }
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "test": "node --import tsx --test test/**/*.test.ts"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "@types/vscode": "^1.85.0",
+    "tsx": "^4.0.0",
+    "typescript": "^5.3.0"
+  }
+}
