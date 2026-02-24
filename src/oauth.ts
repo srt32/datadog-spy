@@ -150,14 +150,16 @@ function generatePkce(): { verifier: string; challenge: string } {
 
 /**
  * Starts a local HTTP server to receive the OAuth callback.
+ * Validates the state parameter to prevent CSRF attacks.
  * Returns the auth code received.
  */
-function waitForCallback(port: number): Promise<string> {
+function waitForCallback(port: number, expectedState: string): Promise<string> {
   return new Promise((resolve, reject) => {
     const server = http.createServer((req, res) => {
       const parsed = url.parse(req.url || '', true);
       const code = parsed.query.code as string | undefined;
       const error = parsed.query.error as string | undefined;
+      const receivedState = parsed.query.state as string | undefined;
 
       if (error) {
         res.writeHead(200, { 'Content-Type': 'text/html' });
@@ -168,6 +170,14 @@ function waitForCallback(port: number): Promise<string> {
       }
 
       if (code) {
+        // Validate state parameter to prevent CSRF attacks
+        if (!receivedState || receivedState !== expectedState) {
+          res.writeHead(400, { 'Content-Type': 'text/html' });
+          res.end('<html><body><h2>Authentication failed</h2><p>Invalid state parameter. You can close this tab.</p></body></html>');
+          server.close();
+          reject(new Error('OAuth state mismatch. Possible CSRF attack.'));
+          return;
+        }
         res.writeHead(200, { 'Content-Type': 'text/html' });
         res.end('<html><body><h2>✅ Authenticated with Datadog!</h2><p>You can close this tab and return to VS Code.</p></body></html>');
         server.close();
@@ -223,7 +233,7 @@ export async function login(
   authUrl.searchParams.set('scope', SCOPES);
 
   // Start callback server and open browser
-  const codePromise = waitForCallback(port);
+  const codePromise = waitForCallback(port, state);
   await vscode.env.openExternal(vscode.Uri.parse(authUrl.toString()));
 
   vscode.window.showInformationMessage('Datadog Spy: Complete login in your browser...');
